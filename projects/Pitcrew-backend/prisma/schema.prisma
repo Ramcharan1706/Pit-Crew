@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Intent {
+  id             String   @id @default(uuid())
+  userAddress    String
+  condition      String
+  targetValue    Float
+  amountAlgo     Float
+  recipient      String
+  initialPrice   Float
+  status         String   @default("active")
+  triggeredAt    DateTime?
+  triggerPrice   Float?
+  executedAt     DateTime?
+  executionTxId  String?
+  expirationAt   DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("intents")
+  @@index([userAddress])
+  @@index([status])
+  @@index([expirationAt])
+}
