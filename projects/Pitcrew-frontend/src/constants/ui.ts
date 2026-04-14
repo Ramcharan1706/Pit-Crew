@@ -1,0 +1,21 @@
+export const UI_CONSTANTS = {
+  SIDEBAR_WIDTH: '16rem',
+  TOPBAR_HEIGHT: '4rem',
+  CARD_BORDER_RADIUS: 'rounded-xl',
+  CARD_SHADOW: 'shadow-lg',
+  MODAL_Z_INDEX: 50,
+  SUCCESS_FADE_MS: 3000,
+  ERROR_FADE_MS: 5000,
+  WEBSOCKET_RECONNECT_MS: 1000,
+  TX_POLLING_INTERVAL_MS: 1500,
+  TX_POLLING_MAX_ATTEMPTS: 30,
+};
+
+export const BREAKPOINTS = {
+  xs: 375,
+  sm: 640,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
+  '2xl': 1536,
+};

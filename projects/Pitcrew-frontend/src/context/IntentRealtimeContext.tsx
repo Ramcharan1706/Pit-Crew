@@ -7,11 +7,19 @@ import { socketService } from '../services/socket';
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
 
+export interface PricePoint {
+  price: number;
+  timestamp: string;
+}
+
+const MAX_PRICE_POINTS = 180;
+
 interface IntentRealtimeContextValue {
   intents: Intent[];
   loading: boolean;
   fetchError: string | null;
   latestPrice: number | null;
+  priceHistory: PricePoint[];
   connectionStatus: ConnectionStatus;
   refreshIntents: () => Promise<void>;
   refreshPrice: () => Promise<void>;
@@ -27,7 +35,28 @@ export const IntentRealtimeProvider: React.FC<{ children: React.ReactNode }> = (
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [latestPrice, setLatestPrice] = useState<number | null>(null);
+  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+
+  const appendPricePoint = (price: number, timestamp?: string) => {
+    if (!Number.isFinite(price) || price <= 0) {
+      return;
+    }
+
+    const nextPoint: PricePoint = {
+      price,
+      timestamp: timestamp || new Date().toISOString(),
+    };
+
+    setPriceHistory((previous) => {
+      const last = previous[previous.length - 1];
+      if (last && Math.abs(last.price - price) < 0.0000001) {
+        return previous;
+      }
+
+      return [...previous, nextPoint].slice(-MAX_PRICE_POINTS);
+    });
+  };
 
   const upsertIntent = (incomingIntent: Intent) => {
     setIntents((previous) => {
@@ -66,6 +95,7 @@ export const IntentRealtimeProvider: React.FC<{ children: React.ReactNode }> = (
       const health = await intentApi.health();
       if (typeof health.price === 'number') {
         setLatestPrice(health.price);
+        appendPricePoint(health.price, health.observedAt);
       }
     } catch {
       // Do not block UX if price service is momentarily unavailable.
@@ -80,7 +110,7 @@ export const IntentRealtimeProvider: React.FC<{ children: React.ReactNode }> = (
     void refreshPrice();
     const intervalId = window.setInterval(() => {
       void refreshPrice();
-    }, 60000);
+    }, 10000);
 
     return () => {
       window.clearInterval(intervalId);
@@ -96,6 +126,7 @@ export const IntentRealtimeProvider: React.FC<{ children: React.ReactNode }> = (
     const unsubscribePrice = socketService.subscribePrice((snapshot) => {
       if (typeof snapshot.usd === 'number' && snapshot.usd > 0) {
         setLatestPrice(snapshot.usd);
+        appendPricePoint(snapshot.usd);
       }
     });
 
@@ -152,12 +183,13 @@ export const IntentRealtimeProvider: React.FC<{ children: React.ReactNode }> = (
       loading,
       fetchError,
       latestPrice,
+      priceHistory,
       connectionStatus,
       refreshIntents,
       refreshPrice,
       upsertIntent,
     }),
-    [intents, loading, fetchError, latestPrice, connectionStatus],
+    [intents, loading, fetchError, latestPrice, priceHistory, connectionStatus],
   );
 
   return <IntentRealtimeContext.Provider value={value}>{children}</IntentRealtimeContext.Provider>;

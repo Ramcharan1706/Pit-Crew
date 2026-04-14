@@ -2,7 +2,7 @@ import { SupportedWallet, WalletId, WalletManager, WalletProvider } from '@txnla
 import { SnackbarProvider } from 'notistack'
 import { BrowserRouter } from 'react-router-dom'
 import { IntentRealtimeProvider } from './context/IntentRealtimeContext'
-import AppRoutes from './routes/AppRoutes'
+import { AppRoutes } from './routes/AppRoutes'
 import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 
 let supportedWallets: SupportedWallet[]

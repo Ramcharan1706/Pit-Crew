@@ -1,27 +1,43 @@
 import React from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
-import AppShell from '../components/AppShell';
-import DashboardPage from '../pages/DashboardPage';
-import CreateIntentPage from '../pages/CreateIntentPage';
-import IntentDetailsPage from '../pages/IntentDetailsPage';
-import ApprovalsPage from '../pages/ApprovalsPage';
-import ActivityPage from '../pages/ActivityPage';
-import TransactionsPage from '../pages/TransactionsPage';
+import { Routes, Route } from 'react-router-dom';
+import { MainLayout } from '../components/layout/MainLayout';
+import { Dashboard } from '../pages/Dashboard';
+import { CreateIntent } from '../pages/CreateIntent';
+import { Intents } from '../pages/Intents';
+import { TriggerCenter } from '../pages/TriggerCenter';
+import { IntentDetails } from '../pages/IntentDetails';
+import { History } from '../pages/History';
+import { Market } from '../pages/Market';
+import { Profile } from '../pages/Profile';
+import Account from '../pages/Account';
 
-const AppRoutes: React.FC = () => {
+export const AppRoutes: React.FC = () => {
   return (
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/create" element={<CreateIntentPage />} />
-        <Route path="/intents/:intentId" element={<IntentDetailsPage />} />
-        <Route path="/approvals" element={<ApprovalsPage />} />
-        <Route path="/activity" element={<ActivityPage />} />
-        <Route path="/transactions" element={<TransactionsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+    <MainLayout>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/create" element={<CreateIntent />} />
+        <Route path="/intents" element={<Intents />} />
+        <Route path="/trigger-center" element={<TriggerCenter />} />
+        <Route path="/intent/:id" element={<IntentDetails />} />
+        <Route path="/intents/:id" element={<IntentDetails />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/market" element={<Market />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/account" element={<Account />} />
+
+        {/* 404 Fallback */}
+        <Route
+          path="*"
+          element={
+            <div className="text-center py-12">
+              <p className="text-2xl font-bold text-white mb-2">404 - Page Not Found</p>
+              <p className="text-slate-400">The page you're looking for doesn't exist</p>
+            </div>
+          }
+        />
+      </Routes>
+    </MainLayout>
   );
 };
-
-export default AppRoutes;

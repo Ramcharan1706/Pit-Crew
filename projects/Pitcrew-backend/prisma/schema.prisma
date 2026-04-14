@@ -31,3 +31,16 @@ model Intent {
   @@index([status])
   @@index([expirationAt])
 }
+
+model ProfileSettings {
+  walletAddress            String   @id
+  defaultExpiryMinutes     Int      @default(60)
+  notificationsInApp       Boolean  @default(true)
+  notificationsTrigger     Boolean  @default(true)
+  notificationsExecution   Boolean  @default(true)
+  notificationsPrice       Boolean  @default(false)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@map("profile_settings")
+}

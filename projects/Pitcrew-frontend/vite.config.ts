@@ -12,4 +12,16 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-algo': ['algosdk', '@algorandfoundation/algokit-utils', '@algorandfoundation/algokit-client-generator'],
+          'vendor-wallet': ['@txnlab/use-wallet-react', '@txnlab/use-wallet', '@perawallet/connect', '@blockshake/defly-connect'],
+          'vendor-ui': ['react', 'react-dom', 'react-router-dom', 'notistack', 'recharts'],
+        },
+      },
+    },
+  },
 })

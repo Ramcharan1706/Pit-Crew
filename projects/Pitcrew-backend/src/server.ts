@@ -7,6 +7,7 @@ import cron from 'node-cron';
 import dotenv from 'dotenv';
 import algosdk from 'algosdk';
 import axios from 'axios';
+import crypto from 'crypto';
 import { CreateIntentDto, Intent, PriceData } from './lib/types';
 
 dotenv.config();
@@ -33,6 +34,9 @@ const VALID_CONDITIONS = new Set<CreateIntentDto['condition']>(['price_drop_pct'
 const MIN_EXPIRATION_MINUTES = 5;
 const MAX_EXPIRATION_MINUTES = 60 * 24 * 7;
 const MAX_CONFIRMATION_POLLS = 8;
+const CHALLENGE_TTL_MS = 5 * 60_000;
+const SESSION_TTL_MS = Number(process.env.AUTH_SESSION_TTL_MS || 60 * 60_000);
+const AUTH_REQUIRED = process.env.AUTH_REQUIRED === 'true';
 
 type StoredIntent = Intent & {
   expirationAt?: Date | null;
@@ -43,6 +47,33 @@ type StoredIntent = Intent & {
   triggeredAt?: Date | null;
   executedAt?: Date | null;
 };
+
+type AuthChallenge = {
+  message: string;
+  expiresAt: number;
+};
+
+type AuthSession = {
+  userAddress: string;
+  expiresAt: number;
+};
+
+type AuthedRequest = express.Request & {
+  authAddress?: string;
+};
+
+type ProfileSettingsPayload = {
+  defaultExpiryMinutes?: number;
+  notificationPreferences?: {
+    inApp?: boolean;
+    triggerAlerts?: boolean;
+    executionAlerts?: boolean;
+    priceAlerts?: boolean;
+  };
+};
+
+const authChallenges = new Map<string, AuthChallenge>();
+const authSessions = new Map<string, AuthSession>();
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -63,6 +94,187 @@ app.get('/health', async (_req, res) => {
   }
 });
 
+app.post('/auth/challenge', (req, res) => {
+  const { address } = req.body as { address?: string };
+  if (!address || !validateAlgoAddress(address)) {
+    return res.status(400).json({ error: 'Valid wallet address required' });
+  }
+
+  const normalizedAddress = normalizeAddress(address);
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const issuedAt = new Date().toISOString();
+  const expiresAt = Date.now() + CHALLENGE_TTL_MS;
+  const message = [
+    'Pitcrew authentication challenge',
+    `address:${normalizedAddress}`,
+    `nonce:${nonce}`,
+    `issued_at:${issuedAt}`,
+    'purpose:sign in to Pitcrew backend',
+  ].join('\n');
+
+  authChallenges.set(normalizedAddress, { message, expiresAt });
+  res.json({ address: normalizedAddress, message, expiresAt: new Date(expiresAt).toISOString() });
+});
+
+app.post('/auth/verify', (req, res) => {
+  const { address, signature } = req.body as { address?: string; signature?: string };
+
+  if (!address || !validateAlgoAddress(address)) {
+    return res.status(400).json({ error: 'Valid wallet address required' });
+  }
+
+  if (!signature) {
+    return res.status(400).json({ error: 'Signature required' });
+  }
+
+  const normalizedAddress = normalizeAddress(address);
+  const challenge = authChallenges.get(normalizedAddress);
+  if (!challenge || challenge.expiresAt <= Date.now()) {
+    authChallenges.delete(normalizedAddress);
+    return res.status(401).json({ error: 'Challenge missing or expired' });
+  }
+
+  let isValidSignature = false;
+  try {
+    const encodedMessage = new TextEncoder().encode(challenge.message);
+    const encodedSignature = new Uint8Array(Buffer.from(signature, 'base64'));
+    isValidSignature = algosdk.verifyBytes(encodedMessage, encodedSignature, normalizedAddress);
+  } catch {
+    return res.status(400).json({ error: 'Invalid signature encoding' });
+  }
+
+  if (!isValidSignature) {
+    return res.status(401).json({ error: 'Signature verification failed' });
+  }
+
+  authChallenges.delete(normalizedAddress);
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  authSessions.set(token, { userAddress: normalizedAddress, expiresAt });
+
+  res.json({
+    token,
+    address: normalizedAddress,
+    expiresAt: new Date(expiresAt).toISOString(),
+  });
+});
+
+app.get('/auth/session', requireAuth, (req, res) => {
+  const session = getSessionForRequest(req);
+  if (!session) {
+    return res.status(401).json({ error: 'No active session' });
+  }
+
+  res.json({
+    address: session.userAddress,
+    expiresAt: new Date(session.expiresAt).toISOString(),
+  });
+});
+
+const toProfileSettingsResponse = (settings: {
+  walletAddress: string;
+  defaultExpiryMinutes: number;
+  notificationsInApp: boolean;
+  notificationsTrigger: boolean;
+  notificationsExecution: boolean;
+  notificationsPrice: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) => {
+  return {
+    walletAddress: settings.walletAddress,
+    defaultExpiryMinutes: settings.defaultExpiryMinutes,
+    notificationPreferences: {
+      inApp: settings.notificationsInApp,
+      triggerAlerts: settings.notificationsTrigger,
+      executionAlerts: settings.notificationsExecution,
+      priceAlerts: settings.notificationsPrice,
+    },
+    createdAt: settings.createdAt.toISOString(),
+    updatedAt: settings.updatedAt.toISOString(),
+  };
+};
+
+app.get('/profile/settings/:walletAddress', requireAuth, async (req, res) => {
+  try {
+    const request = req as AuthedRequest;
+    const walletAddress = normalizeAddress(req.params.walletAddress || '');
+
+    if (!validateAlgoAddress(walletAddress)) {
+      return res.status(400).json({ error: 'Valid wallet address required' });
+    }
+
+    if (request.authAddress && normalizeAddress(request.authAddress) !== walletAddress) {
+      return res.status(403).json({ error: 'Wallet does not own these settings' });
+    }
+
+    const settings = await prisma.profileSettings.upsert({
+      where: { walletAddress },
+      create: {
+        walletAddress,
+        defaultExpiryMinutes: 60,
+      },
+      update: {},
+    });
+
+    return res.json(toProfileSettingsResponse(settings));
+  } catch (error) {
+    console.error('Profile settings read error:', error);
+    return res.status(400).json({ error: (error as Error).message });
+  }
+});
+
+app.put('/profile/settings/:walletAddress', requireAuth, async (req, res) => {
+  try {
+    const request = req as AuthedRequest;
+    const walletAddress = normalizeAddress(req.params.walletAddress || '');
+    const payload = req.body as ProfileSettingsPayload;
+
+    if (!validateAlgoAddress(walletAddress)) {
+      return res.status(400).json({ error: 'Valid wallet address required' });
+    }
+
+    if (request.authAddress && normalizeAddress(request.authAddress) !== walletAddress) {
+      return res.status(403).json({ error: 'Wallet does not own these settings' });
+    }
+
+    const defaultExpiryMinutes = Number(payload.defaultExpiryMinutes);
+    if (!Number.isFinite(defaultExpiryMinutes)
+      || defaultExpiryMinutes < MIN_EXPIRATION_MINUTES
+      || defaultExpiryMinutes > MAX_EXPIRATION_MINUTES) {
+      return res.status(400).json({
+        error: `defaultExpiryMinutes must be between ${MIN_EXPIRATION_MINUTES} and ${MAX_EXPIRATION_MINUTES}`,
+      });
+    }
+
+    const preferences = payload.notificationPreferences || {};
+    const updated = await prisma.profileSettings.upsert({
+      where: { walletAddress },
+      create: {
+        walletAddress,
+        defaultExpiryMinutes,
+        notificationsInApp: Boolean(preferences.inApp ?? true),
+        notificationsTrigger: Boolean(preferences.triggerAlerts ?? true),
+        notificationsExecution: Boolean(preferences.executionAlerts ?? true),
+        notificationsPrice: Boolean(preferences.priceAlerts ?? false),
+      },
+      update: {
+        defaultExpiryMinutes,
+        notificationsInApp: Boolean(preferences.inApp ?? true),
+        notificationsTrigger: Boolean(preferences.triggerAlerts ?? true),
+        notificationsExecution: Boolean(preferences.executionAlerts ?? true),
+        notificationsPrice: Boolean(preferences.priceAlerts ?? false),
+      },
+    });
+
+    return res.json(toProfileSettingsResponse(updated));
+  } catch (error) {
+    console.error('Profile settings update error:', error);
+    return res.status(400).json({ error: (error as Error).message });
+  }
+});
+
 // Algod client for TestNet
 const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
 const indexerClient = process.env.INDEXER_SERVER
@@ -73,21 +285,66 @@ const indexerClient = process.env.INDEXER_SERVER
     )
   : null;
 
-// CoinGecko price fetching
-let currentAlgoPrice: PriceData = { usd: 0 };
+// CoinGecko price fetching with retry logic
+const DEFAULT_ALGO_PRICE = { usd: 0.124 }; // Fallback price when API is unavailable
+let currentAlgoPrice: PriceData = DEFAULT_ALGO_PRICE;
 let currentPriceObservedAt = new Date().toISOString();
 let monitoringInProgress = false;
+let lastPriceFetchTime = 0;
+const MIN_PRICE_FETCH_INTERVAL = 10000; // Minimum 10 seconds between price fetches
 
 async function fetchAlgoPrice(): Promise<PriceData> {
-  try {
-    const response = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=algorand&vs_currencies=usd');
-    const data = response.data as { algorand: { usd: number } };
-    currentPriceObservedAt = new Date().toISOString();
-    return { usd: data.algorand.usd };
-  } catch (error) {
-    console.error('Price fetch error:', error);
+  const now = Date.now();
+
+  // Respect rate limiting: don't fetch more frequently than MIN_PRICE_FETCH_INTERVAL
+  if (now - lastPriceFetchTime < MIN_PRICE_FETCH_INTERVAL) {
     return currentAlgoPrice;
   }
+
+  let lastError: Error | null = null;
+
+  // Retry logic with exponential backoff
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await axios.get(
+        'https://api.coingecko.com/api/v3/simple/price?ids=algorand&vs_currencies=usd',
+        {
+          timeout: 5000,
+          headers: {
+            'Accept': 'application/json',
+          },
+        }
+      );
+
+      const data = response.data as { algorand?: { usd?: number } };
+      const price = data.algorand?.usd;
+
+      if (typeof price === 'number' && price > 0) {
+        lastPriceFetchTime = now;
+        currentPriceObservedAt = new Date().toISOString();
+        currentAlgoPrice = { usd: price };
+        console.log('✓ Successfully fetched ALGO price:', price);
+        return { usd: price };
+      }
+
+      throw new Error('Invalid price data received');
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < 2) {
+        // Exponential backoff: 1s, 2s before next attempt
+        const delayMs = (attempt + 1) * 1000;
+        console.log(`Price fetch attempt ${attempt + 1} failed, retrying in ${delayMs}ms...`);
+        await delay(delayMs);
+      }
+    }
+  }
+
+  console.error('✗ Price fetch failed after 3 attempts:', lastError?.message);
+  console.log('Using cached price:', currentAlgoPrice.usd);
+
+  // Return current cached price if available, otherwise use default
+  return currentAlgoPrice.usd > 0 ? currentAlgoPrice : DEFAULT_ALGO_PRICE;
 }
 
 function validateAlgoAddress(address: string): boolean {
@@ -96,6 +353,73 @@ function validateAlgoAddress(address: string): boolean {
 
 function normalizeAddress(address: string): string {
   return address.trim();
+}
+
+function extractBearerToken(req: express.Request): string | null {
+  const value = req.headers.authorization;
+  if (!value) {
+    return null;
+  }
+
+  const [scheme, token] = value.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    return null;
+  }
+
+  return token.trim();
+}
+
+function getSessionForRequest(req: express.Request): AuthSession | null {
+  const token = extractBearerToken(req);
+  if (!token) {
+    return null;
+  }
+
+  const session = authSessions.get(token);
+  if (!session) {
+    return null;
+  }
+
+  if (session.expiresAt <= Date.now()) {
+    authSessions.delete(token);
+    return null;
+  }
+
+  return session;
+}
+
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  const request = req as AuthedRequest;
+  const session = getSessionForRequest(request);
+
+  if (!session) {
+    if (AUTH_REQUIRED) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    next();
+    return;
+  }
+
+  request.authAddress = session.userAddress;
+  next();
+}
+
+function resolveOwnerAddress(request: AuthedRequest, fallbackAddress?: string): string | null {
+  if (request.authAddress) {
+    if (fallbackAddress && normalizeAddress(request.authAddress) !== normalizeAddress(fallbackAddress)) {
+      return null;
+    }
+
+    return normalizeAddress(request.authAddress);
+  }
+
+  if (!fallbackAddress) {
+    return null;
+  }
+
+  return normalizeAddress(fallbackAddress);
 }
 
 function buildExpirationDate(expirationMinutes?: number): Date | null {
@@ -172,8 +496,8 @@ async function cancelExpiredIntent(intent: StoredIntent, reason: string) {
   }
 }
 
-// Monitor intents cron (every 30s)
-cron.schedule('*/30 * * * * *', async () => {
+// Monitor intents cron (every 2 minutes to respect API rate limits)
+cron.schedule('0 */2 * * * *', async () => {
   if (monitoringInProgress) {
     return;
   }
@@ -227,18 +551,21 @@ cron.schedule('*/30 * * * * *', async () => {
 });
 
 // APIs
-app.post('/intents', async (req, res) => {
+app.post('/intents', requireAuth, async (req, res) => {
   try {
+    const request = req as AuthedRequest;
     const data: CreateIntentDto = req.body;
+    const ownerAddress = resolveOwnerAddress(request, data.userAddress);
+
+    if (!ownerAddress || !validateAlgoAddress(ownerAddress)) {
+      return res.status(400).json({ error: 'Valid user address is required' });
+    }
 
     // Validate inputs
-    if (!data.userAddress || !validateAlgoAddress(data.userAddress)) {
-      return res.status(400).json({ error: 'Invalid user address' });
-    }
     if (!data.recipient || !validateAlgoAddress(data.recipient)) {
       return res.status(400).json({ error: 'Invalid recipient address' });
     }
-    if (normalizeAddress(data.userAddress) === normalizeAddress(data.recipient)) {
+    if (normalizeAddress(ownerAddress) === normalizeAddress(data.recipient)) {
       return res.status(400).json({ error: 'Recipient must differ from the connected wallet' });
     }
     if (data.amountAlgo <= 0) {
@@ -262,15 +589,17 @@ app.post('/intents', async (req, res) => {
 
     const intent = await prisma.intent.create({
       data: {
-        ...data,
-        userAddress: normalizeAddress(data.userAddress),
+        userAddress: ownerAddress,
         recipient: normalizeAddress(data.recipient),
+        condition: data.condition,
+        targetValue: data.targetValue,
+        amountAlgo: data.amountAlgo,
         initialPrice: initialPrice.usd,
         status: 'active',
         expirationAt: buildExpirationDate(data.expirationMinutes),
       } as any,
     }) as StoredIntent;
-    io.to(data.userAddress).emit('intent_created', intent);
+    io.to(ownerAddress).emit('intent_created', intent);
     res.json(intent);
   } catch (error) {
     console.error('Intent creation error:', error);
@@ -278,8 +607,14 @@ app.post('/intents', async (req, res) => {
   }
 });
 
-app.get('/intents/:userAddress', async (req, res) => {
+app.get('/intents/:userAddress', requireAuth, async (req, res) => {
+  const request = req as AuthedRequest;
   const { userAddress } = req.params;
+
+  if (request.authAddress && normalizeAddress(request.authAddress) !== normalizeAddress(userAddress)) {
+    return res.status(403).json({ error: 'Wallet does not own this intent list' });
+  }
+
   const intents = await prisma.intent.findMany({
     where: { userAddress: normalizeAddress(userAddress) },
     orderBy: { createdAt: 'desc' },
@@ -287,7 +622,94 @@ app.get('/intents/:userAddress', async (req, res) => {
   res.json(intents);
 });
 
-app.get('/intent/:id', async (req, res) => {
+app.get('/intents/:userAddress/search', requireAuth, async (req, res) => {
+  try {
+    const request = req as AuthedRequest;
+    const { userAddress } = req.params;
+
+    if (request.authAddress && normalizeAddress(request.authAddress) !== normalizeAddress(userAddress)) {
+      return res.status(403).json({ error: 'Wallet does not own this intent list' });
+    }
+
+    const {
+      q,
+      status,
+      condition,
+      amount_min,
+      amount_max,
+      limit = '25',
+      offset = '0',
+      sort_by = 'createdAt',
+      sort_order = 'desc',
+    } = req.query;
+
+    const limitNum = Math.min(parseInt(limit as string) || 25, 100);
+    const offsetNum = Math.max(parseInt(offset as string) || 0, 0);
+
+    const where: any = {
+      userAddress: normalizeAddress(userAddress),
+    };
+
+    if (q) {
+      const searchStr = (q as string).trim();
+      where.OR = [
+        { id: { contains: searchStr, mode: 'insensitive' } },
+        { recipient: { contains: searchStr, mode: 'insensitive' } },
+      ];
+    }
+
+    if (status && status !== 'all') {
+      where.status = status;
+    }
+
+    if (condition && condition !== 'all') {
+      where.condition = condition;
+    }
+
+    if (amount_min || amount_max) {
+      where.amountAlgo = {};
+      if (amount_min) {
+        where.amountAlgo.gte = parseFloat(amount_min as string);
+      }
+      if (amount_max) {
+        where.amountAlgo.lte = parseFloat(amount_max as string);
+      }
+    }
+
+    const orderByMap: Record<string, any> = {
+      createdAt: { createdAt: sort_order || 'desc' },
+      amount: { amountAlgo: sort_order || 'desc' },
+      recipient: { recipient: sort_order || 'asc' },
+      status: { status: sort_order || 'asc' },
+    };
+
+    const orderBy = orderByMap[sort_by as string] || { createdAt: 'desc' };
+
+    const [intents, total] = await Promise.all([
+      prisma.intent.findMany({
+        where,
+        orderBy,
+        take: limitNum,
+        skip: offsetNum,
+      }),
+      prisma.intent.count({ where }),
+    ]);
+
+    res.json({
+      data: intents,
+      total,
+      limit: limitNum,
+      offset: offsetNum,
+      hasMore: offsetNum + limitNum < total,
+    });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(400).json({ error: (error as Error).message || 'Search failed' });
+  }
+});
+
+app.get('/intent/:id', requireAuth, async (req, res) => {
+  const request = req as AuthedRequest;
   const { id } = req.params;
   const intent = await prisma.intent.findUnique({ where: { id } });
 
@@ -295,16 +717,33 @@ app.get('/intent/:id', async (req, res) => {
     return res.status(404).json({ error: 'Intent not found' });
   }
 
+  if (request.authAddress && normalizeAddress(request.authAddress) !== normalizeAddress(intent.userAddress)) {
+    return res.status(403).json({ error: 'Wallet does not own this intent' });
+  }
+
   res.json(intent);
 });
 
-app.patch('/intents/:id/status', async (req, res) => {
+app.patch('/intents/:id/status', requireAuth, async (req, res) => {
   try {
+    const request = req as AuthedRequest;
     const { id } = req.params;
     const { status } = req.body;
     if (!VALID_STATUSES.has(status)) {
       return res.status(400).json({ error: 'Unsupported intent status' });
     }
+
+    if (request.authAddress) {
+      const existingIntent = await prisma.intent.findUnique({ where: { id } });
+      if (!existingIntent) {
+        return res.status(404).json({ error: 'Intent not found' });
+      }
+
+      if (normalizeAddress(existingIntent.userAddress) !== normalizeAddress(request.authAddress)) {
+        return res.status(403).json({ error: 'Wallet does not own this intent' });
+      }
+    }
+
     const intent = await prisma.intent.update({
       where: { id },
       data: { status } as any,
@@ -315,12 +754,14 @@ app.patch('/intents/:id/status', async (req, res) => {
   }
 });
 
-app.post('/intents/:id/cancel', async (req, res) => {
+app.post('/intents/:id/cancel', requireAuth, async (req, res) => {
   try {
+    const request = req as AuthedRequest;
     const { id } = req.params;
     const { userAddress, reason } = req.body as { userAddress?: string; reason?: string };
+    const ownerAddress = resolveOwnerAddress(request, userAddress);
 
-    if (!userAddress || !validateAlgoAddress(userAddress)) {
+    if (!ownerAddress || !validateAlgoAddress(ownerAddress)) {
       return res.status(400).json({ error: 'Valid wallet address is required to cancel an intent' });
     }
 
@@ -329,7 +770,7 @@ app.post('/intents/:id/cancel', async (req, res) => {
       return res.status(404).json({ error: 'Intent not found' });
     }
 
-    if (normalizeAddress(intent.userAddress) !== normalizeAddress(userAddress)) {
+    if (normalizeAddress(intent.userAddress) !== normalizeAddress(ownerAddress)) {
       return res.status(403).json({ error: 'Wallet does not own this intent' });
     }
 
@@ -355,10 +796,12 @@ app.post('/intents/:id/cancel', async (req, res) => {
 });
 
 // Confirm transaction execution
-app.post('/intents/:id/confirm-execution', async (req, res) => {
+app.post('/intents/:id/confirm-execution', requireAuth, async (req, res) => {
   try {
+    const request = req as AuthedRequest;
     const { id } = req.params;
     const { txnId, userAddress } = req.body as { txnId?: string; userAddress?: string };
+    const ownerAddress = resolveOwnerAddress(request, userAddress);
 
     if (!txnId) {
       return res.status(400).json({ error: 'Transaction ID required' });
@@ -369,7 +812,7 @@ app.post('/intents/:id/confirm-execution', async (req, res) => {
       return res.status(404).json({ error: 'Intent not found' });
     }
 
-    if (userAddress && normalizeAddress(userAddress) !== normalizeAddress(intent.userAddress)) {
+    if (ownerAddress && normalizeAddress(ownerAddress) !== normalizeAddress(intent.userAddress)) {
       return res.status(403).json({ error: 'Transaction does not belong to this wallet' });
     }
 
