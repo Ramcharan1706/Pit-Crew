@@ -26,7 +26,11 @@ const io = new Server(server, {
 cors: { origin: '*' }
 });
 
-const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
+const algodClient = new algosdk.Algodv2(
+'',
+'https://testnet-api.algonode.cloud',
+''
+);
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -42,10 +46,15 @@ const pendingInfo = await algodClient.pendingTransactionInformation(txnId).do();
     0
   );
 
-  if (confirmedRound > 0) return true;
+  if (confirmedRound > 0) {
+    return true;
+  }
 
   const poolError = String((pendingInfo as any)['pool-error'] ?? '').trim();
-  if (poolError) throw new Error(poolError);
+
+  if (poolError) {
+    throw new Error(poolError);
+  }
 
   await delay(500);
 }
@@ -53,8 +62,8 @@ const pendingInfo = await algodClient.pendingTransactionInformation(txnId).do();
 return false;
 ```
 
-} catch (err) {
-console.error('TX ERROR:', err);
+} catch (error) {
+console.error('TX ERROR:', error);
 return false;
 }
 }
@@ -67,7 +76,7 @@ app.get('/health', async (_req, res) => {
 try {
 await prisma.$queryRaw`SELECT 1`;
 res.json({ ok: true });
-} catch (err) {
+} catch (error) {
 res.status(500).json({ ok: false });
 }
 });
