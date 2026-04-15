@@ -5,21 +5,14 @@
 "lib": ["ES2022", "DOM"],
 "outDir": "./dist",
 "rootDir": "./src",
-
-```
 "strict": false,
 "noImplicitAny": false,
-
 "esModuleInterop": true,
 "allowSyntheticDefaultImports": true,
-
 "skipLibCheck": true,
 "resolveJsonModule": true,
-
 "experimentalDecorators": true,
 "emitDecoratorMetadata": true
-```
-
 },
 "include": ["src/**/*"]
 }
