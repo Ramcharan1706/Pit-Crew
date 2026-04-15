@@ -3,26 +3,26 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Intent {
-  id             String   @id @default(uuid())
-  userAddress    String
-  condition      String
-  targetValue    Float
-  amountAlgo     Float
-  recipient      String
-  initialPrice   Float
-  status         String   @default("active")
+  id             String   @id @default(cuid())
+  userAddress    String   @db.VarChar(58)
+  condition      String   @db.VarChar(50)
+  targetValue    Float    @db.DoublePrecision
+  amountAlgo     Float    @db.DoublePrecision
+  recipient      String   @db.VarChar(58)
+  initialPrice   Float    @db.DoublePrecision
+  status         String   @default("active") @db.VarChar(50)
   triggeredAt    DateTime?
-  triggerPrice   Float?
+  triggerPrice   Float? @db.DoublePrecision
   executedAt     DateTime?
-  executionTxId  String?
+  executionTxId  String? @db.VarChar(255)
   expirationAt   DateTime?
   cancelledAt    DateTime?
-  cancelReason   String?
+  cancelReason   String? @db.VarChar(255)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -30,10 +30,11 @@ model Intent {
   @@index([userAddress])
   @@index([status])
   @@index([expirationAt])
+  @@index([createdAt])
 }
 
 model ProfileSettings {
-  walletAddress            String   @id
+  walletAddress            String   @id @db.VarChar(58)
   defaultExpiryMinutes     Int      @default(60)
   notificationsInApp       Boolean  @default(true)
   notificationsTrigger     Boolean  @default(true)
