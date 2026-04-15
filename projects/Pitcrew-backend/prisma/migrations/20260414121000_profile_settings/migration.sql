@@ -6,6 +6,6 @@ CREATE TABLE "profile_settings" (
     "notificationsTrigger" BOOLEAN NOT NULL DEFAULT true,
     "notificationsExecution" BOOLEAN NOT NULL DEFAULT true,
     "notificationsPrice" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );

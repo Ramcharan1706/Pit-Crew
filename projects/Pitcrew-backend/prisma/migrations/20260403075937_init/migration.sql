@@ -8,13 +8,25 @@ CREATE TABLE "intents" (
     "recipient" TEXT NOT NULL,
     "initialPrice" REAL NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'active',
-    "triggeredAt" DATETIME,
+    "triggeredAt" TIMESTAMP(3),
     "triggerPrice" REAL,
-    "executedAt" DATETIME,
+    "executedAt" TIMESTAMP(3),
     "executionTxId" TEXT,
-    "expirationAt" DATETIME,
-    "cancelledAt" DATETIME,
+    "expirationAt" TIMESTAMP(3),
+    "cancelledAt" TIMESTAMP(3),
     "cancelReason" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
+
+-- CreateIndex
+CREATE INDEX "intents_userAddress_idx" ON "intents"("userAddress");
+
+-- CreateIndex
+CREATE INDEX "intents_status_idx" ON "intents"("status");
+
+-- CreateIndex
+CREATE INDEX "intents_expirationAt_idx" ON "intents"("expirationAt");
+
+-- CreateIndex
+CREATE INDEX "intents_createdAt_idx" ON "intents"("createdAt");
