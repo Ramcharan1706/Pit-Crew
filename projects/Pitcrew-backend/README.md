@@ -37,7 +37,7 @@ Quick version:
 3. Set environment variables in Render dashboard
 4. Push to main branch → Auto-deploys
 
-Production URL: `https://pitcrew-api.onrender.com` (or your Render domain)
+Production URL: `https://pit-crew.onrender.com` (or your Render domain)
 
 ---
 
