@@ -36,17 +36,41 @@ const prisma = new PrismaClient({
   log: IS_PRODUCTION ? ['error'] : ['error', 'warn'],
 });
 const server = http.createServer(app);
+const normalizeOrigin = (origin: string) => origin.trim().replace(/^['\"]+|['\"]+$/g, '').replace(/\/+$/, '');
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
+const wildcardAllowedOrigins = allowedOrigins
+  .filter((origin) => origin.includes('*'))
+  .map((origin) => new RegExp(`^${origin
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')}$`, 'i'));
+const exactAllowedOrigins = new Set(allowedOrigins.filter((origin) => !origin.includes('*')));
+
+const isOriginAllowed = (origin: string): boolean => {
+  const normalized = normalizeOrigin(origin);
+  if (exactAllowedOrigins.has(normalized)) {
+    return true;
+  }
+
+  return wildcardAllowedOrigins.some((pattern) => pattern.test(normalized));
+};
 
 logger.info(`Starting Pitcrew backend in ${NODE_ENV} mode`);
 logger.info(`CORS origins: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : 'allow all (*)'}`);
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.length === 0 || isOriginAllowed(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      logger.warn(`Socket blocked by CORS origin policy: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   },
   transports: ['websocket', 'polling'],
@@ -56,7 +80,15 @@ const io = new Server(server, {
 
 app.use(
   cors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.length === 0 || isOriginAllowed(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      logger.warn(`HTTP blocked by CORS origin policy: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

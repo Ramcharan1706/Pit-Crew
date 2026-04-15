@@ -15,7 +15,7 @@ services:
           name: pitcrew-db
           property: connectionString
       - key: ALLOWED_ORIGINS
-        value: "https://pit-crew-silk.vercel.app"
+        value: "https://*.vercel.app,http://localhost:5173,http://localhost:5174"
       - key: ALGOD_SERVER
         value: https://testnet-api.algonode.cloud
       - key: ALGOD_PORT
