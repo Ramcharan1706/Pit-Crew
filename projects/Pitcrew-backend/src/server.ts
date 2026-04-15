@@ -36,50 +36,15 @@ const prisma = new PrismaClient({
   log: IS_PRODUCTION ? ['error'] : ['error', 'warn'],
 });
 const server = http.createServer(app);
-const normalizeOrigin = (origin: string) => origin.trim().replace(/^['\"]+|['\"]+$/g, '').replace(/\/+$/, '');
-const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
-  .split(',')
-  .map((origin) => normalizeOrigin(origin))
-  .filter(Boolean);
-const fallbackAllowedOrigins = [
-  'https://pit-crew-silk.vercel.app',
-  'https://pit-crew.vercel.app',
-  'https://*.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:5174',
-].map((origin) => normalizeOrigin(origin));
-const allowedOrigins = Array.from(new Set([...envAllowedOrigins, ...fallbackAllowedOrigins]));
-const wildcardAllowedOrigins = allowedOrigins
-  .filter((origin) => origin.includes('*'))
-  .map((origin) => new RegExp(`^${origin
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')}$`, 'i'));
-const exactAllowedOrigins = new Set(allowedOrigins.filter((origin) => !origin.includes('*')));
-
-const isOriginAllowed = (origin: string): boolean => {
-  const normalized = normalizeOrigin(origin);
-  if (exactAllowedOrigins.has(normalized)) {
-    return true;
-  }
-
-  return wildcardAllowedOrigins.some((pattern) => pattern.test(normalized));
-};
+const allowedOrigins = ['https://pit-crew-silk.vercel.app'];
 
 logger.info(`Starting Pitcrew backend in ${NODE_ENV} mode`);
 logger.info(`CORS origins (effective): ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : 'allow all (*)'}`);
 
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.length === 0 || isOriginAllowed(origin)) {
-        callback(null, true);
-        return;
-      }
-
-      logger.warn(`Socket blocked by CORS origin policy: ${origin}`);
-      callback(null, false);
-    },
-    credentials: true,
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
   },
   transports: ['websocket', 'polling'],
   pingInterval: 25000,
@@ -89,7 +54,7 @@ const io = new Server(server, {
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.length === 0 || isOriginAllowed(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
@@ -98,7 +63,7 @@ app.use(
       callback(null, false);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
