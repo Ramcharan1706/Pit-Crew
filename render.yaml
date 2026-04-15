@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: pitcrew-api
+    name: pit-crew
     runtime: node
     plan: standard
     rootDir: projects/Pitcrew-backend
