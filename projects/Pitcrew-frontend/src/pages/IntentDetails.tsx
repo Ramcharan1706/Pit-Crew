@@ -81,6 +81,14 @@ export const IntentDetails: React.FC = () => {
     return ((current - intent.initialPrice) / intent.initialPrice) * 100
   }, [intent, latestPrice])
 
+  const currentPrice = useMemo(() => {
+    if (!intent) {
+      return 0
+    }
+
+    return latestPrice || intent.triggerPrice || intent.initialPrice
+  }, [intent, latestPrice])
+
   const handleApprove = async () => {
     if (!intent || !userAddress) {
       return
@@ -137,7 +145,19 @@ export const IntentDetails: React.FC = () => {
     )
   }
 
-  const strategyLabel = intent.condition === 'price_drop_pct' ? 'Stop Loss' : 'Breakout Buy'
+  const strategyLabel = intent.condition === 'price_drop_pct' ? 'Stop Loss' : 'Breakout / Take Profit'
+  const conditionLabel = intent.condition === 'price_drop_pct' ? 'Drop threshold' : 'Breakout threshold'
+  const triggerSummary = intent.condition === 'price_drop_pct'
+    ? `Triggers when ALGO drops by ${formatPercentage(intent.targetValue)} from entry.`
+    : `Triggers when ALGO rises by ${formatPercentage(intent.targetValue)} from entry.`
+  const formatUsdFull = (value: number) => `$${value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  })}`
+  const formatPercentageFull = (value: number) => `${value >= 0 ? '+' : ''}${value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  })}%`
   const statusClass = intent.status === 'triggered'
     ? 'border-amber-400/45 bg-amber-500/15 text-amber-100'
     : intent.status === 'executed'
@@ -178,20 +198,25 @@ export const IntentDetails: React.FC = () => {
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Trigger condition</p>
               <p className="text-slate-100">
-                {intent.condition === 'price_drop_pct' ? 'Drop threshold' : 'Breakout threshold'} {formatPercentage(intent.targetValue)}
+                {conditionLabel} {formatPercentage(intent.targetValue)}
               </p>
+              <p className="mt-1 text-xs text-slate-400">{triggerSummary}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Price movement</p>
-              <p className={`${priceMovement >= 0 ? 'text-emerald-300' : 'text-red-300'} font-semibold`}>{formatPercentage(priceMovement)}</p>
+              <p className={`${priceMovement >= 0 ? 'text-emerald-300' : 'text-red-300'} font-semibold`}>{formatPercentageFull(priceMovement)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Entry price</p>
+              <p className="font-semibold text-slate-100">{formatUSD(intent.initialPrice)}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Trigger price</p>
-              <p className="font-semibold text-sky-200">{formatUSD(triggerPrice)}</p>
+              <p className="font-semibold text-sky-200">{formatUsdFull(triggerPrice)}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Current price</p>
-              <p className="font-semibold text-white">{formatUSD(latestPrice || intent.triggerPrice || intent.initialPrice)}</p>
+              <p className="font-semibold text-white">{formatUsdFull(currentPrice)}</p>
             </div>
           </div>
         </aside>
@@ -213,6 +238,10 @@ export const IntentDetails: React.FC = () => {
             <p className="text-sm text-slate-200">{formatDate(intent.createdAt)}</p>
           </div>
           <div>
+            <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Expires</p>
+            <p className="text-sm text-slate-200">{intent.expirationAt ? formatDate(intent.expirationAt) : 'No expiry set'}</p>
+          </div>
+          <div>
             <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Triggered</p>
             <p className="text-sm text-slate-200">{intent.triggeredAt ? formatDate(intent.triggeredAt) : 'Not triggered yet'}</p>
           </div>
@@ -223,6 +252,10 @@ export const IntentDetails: React.FC = () => {
           <div>
             <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Transaction Hash</p>
             <p className="break-all font-mono text-xs text-emerald-300">{intent.executionTxId || 'Not available yet'}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Cancel reason</p>
+            <p className="text-sm text-slate-200">{intent.cancelReason || 'Not cancelled'}</p>
           </div>
         </div>
       </section>

@@ -90,7 +90,6 @@ export const TriggerCenter: React.FC = () => {
         </div>
       ) : triggered.length === 0 ? (
         <EmptyState
-          icon="✅"
           title="No triggered intents"
           description="You are clear for now. Triggered intents will appear here in real time."
         />
