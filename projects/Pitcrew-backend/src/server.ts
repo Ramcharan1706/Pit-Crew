@@ -37,7 +37,8 @@ const algodClient = new algosdk.Algodv2(
 );
 
 // ----------- HELPERS -----------
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+const delay = (ms: number) =>
+new Promise(resolve => setTimeout(resolve, ms));
 
 // ----------- FIXED FUNCTION -----------
 async function fetchConfirmedTransaction(txnId: string): Promise<boolean> {
@@ -56,7 +57,10 @@ const pendingInfo = await algodClient
 
   if (confirmedRound > 0) return true;
 
-  const poolError = String((pendingInfo as any)['pool-error'] ?? '').trim();
+  const poolError = String(
+    (pendingInfo as any)['pool-error'] ?? ''
+  ).trim();
+
   if (poolError) throw new Error(poolError);
 
   await delay(500);
