@@ -1,11 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "react",
   "buildCommand": "cd projects/Pitcrew-frontend && npm install && npm run build",
   "outputDirectory": "projects/Pitcrew-frontend/dist",
   "installCommand": "npm install --only=production",
   "devCommand": "cd projects/Pitcrew-frontend && npm run dev",
-
   "rewrites": [
     {
       "source": "/(.*)",
