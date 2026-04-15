@@ -1,0 +1,10 @@
+projects/Pitcrew-contracts
+projects/Pitcrew-contracts/**
+requirements.txt
+poetry.toml
+pyproject.toml
+.venv
+*.egg-info
+__pycache__
+*.py
+setup.py

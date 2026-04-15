@@ -45,9 +45,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       >
         <div className="flex h-full flex-col">
           <div className="mb-8">
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Pitcrew</p>
-            <h1 className="mt-1 text-2xl font-bold text-white">Intent Console</h1>
-            <p className="mt-2 text-xs text-slate-400">Algorand automation control panel</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Intent Flow</p>
+            <h1 className="mt-1 text-2xl font-bold text-white">Auto-Pilot</h1>
+            <p className="mt-2 text-xs text-slate-400">DeFi automation on Algorand</p>
           </div>
 
           <nav className="space-y-2">

@@ -11,9 +11,18 @@ import crypto from 'crypto';
 import { CreateIntentDto, Intent, PriceData } from './lib/types';
 
 dotenv.config();
+const IS_VERCEL = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
+
+// Validate critical environment variables at startup
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL environment variable is not set');
+  process.exit(1);
+}
 
 const app = express();
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  log: ['error', 'warn'],
+});
 const server = http.createServer(app);
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
@@ -28,6 +37,16 @@ const io = new Server(server, {
 
 app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : true }));
 app.use(express.json());
+
+// Error handler middleware
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof Error && err.message.includes('prisma://')) {
+    console.error('Prisma datasource URL validation error. Ensure DATABASE_URL is properly configured:', process.env.DATABASE_URL);
+    res.status(500).json({ error: 'Database configuration error' });
+    return;
+  }
+  res.status(500).json({ error: err?.message || 'Internal server error' });
+});
 
 const VALID_STATUSES = new Set<Intent['status']>(['active', 'triggered', 'executed', 'cancelled']);
 const VALID_CONDITIONS = new Set<CreateIntentDto['condition']>(['price_drop_pct', 'price_breakout_pct']);
@@ -497,58 +516,60 @@ async function cancelExpiredIntent(intent: StoredIntent, reason: string) {
 }
 
 // Monitor intents cron (every 2 minutes to respect API rate limits)
-cron.schedule('0 */2 * * * *', async () => {
-  if (monitoringInProgress) {
-    return;
-  }
+if (!IS_VERCEL) {
+  cron.schedule('0 */2 * * * *', async () => {
+    if (monitoringInProgress) {
+      return;
+    }
 
-  monitoringInProgress = true;
-  try {
-    currentAlgoPrice = await fetchAlgoPrice();
-    io.emit('price_update', { ...currentAlgoPrice, observedAt: currentPriceObservedAt });
-    console.log('Current ALGO price:', currentAlgoPrice.usd);
+    monitoringInProgress = true;
+    try {
+      currentAlgoPrice = await fetchAlgoPrice();
+      io.emit('price_update', { ...currentAlgoPrice, observedAt: currentPriceObservedAt });
+      console.log('Current ALGO price:', currentAlgoPrice.usd);
 
-    const activeIntents = await prisma.intent.findMany({
-      where: { status: 'active' },
-    }) as StoredIntent[];
+      const activeIntents = await prisma.intent.findMany({
+        where: { status: 'active' },
+      }) as StoredIntent[];
 
-    for (const intent of activeIntents) {
-      const now = new Date();
-      if (intent.expirationAt && intent.expirationAt <= now) {
-        await cancelExpiredIntent(intent, 'expired');
-        continue;
-      }
+      for (const intent of activeIntents) {
+        const now = new Date();
+        if (intent.expirationAt && intent.expirationAt <= now) {
+          await cancelExpiredIntent(intent, 'expired');
+          continue;
+        }
 
-      if (currentAlgoPrice.usd <= 0) {
-        continue;
-      }
+        if (currentAlgoPrice.usd <= 0) {
+          continue;
+        }
 
-      if (isIntentTriggered(intent, currentAlgoPrice.usd)) {
-        const triggeredAt = new Date();
-        const updatedCount = await prisma.intent.updateMany({
-          where: { id: intent.id, status: 'active' },
-          data: {
-            status: 'triggered',
-            triggeredAt,
-            triggerPrice: currentAlgoPrice.usd,
-          } as any,
-        });
+        if (isIntentTriggered(intent, currentAlgoPrice.usd)) {
+          const triggeredAt = new Date();
+          const updatedCount = await prisma.intent.updateMany({
+            where: { id: intent.id, status: 'active' },
+            data: {
+              status: 'triggered',
+              triggeredAt,
+              triggerPrice: currentAlgoPrice.usd,
+            } as any,
+          });
 
-        if (updatedCount.count > 0) {
-          const updatedIntent = await prisma.intent.findUnique({ where: { id: intent.id } });
-          if (updatedIntent) {
-            io.to(intent.userAddress).emit('intent_triggered', updatedIntent);
-            console.log(`Intent ${intent.id} triggered for ${intent.userAddress} at ${currentAlgoPrice.usd}`);
+          if (updatedCount.count > 0) {
+            const updatedIntent = await prisma.intent.findUnique({ where: { id: intent.id } });
+            if (updatedIntent) {
+              io.to(intent.userAddress).emit('intent_triggered', updatedIntent);
+              console.log(`Intent ${intent.id} triggered for ${intent.userAddress} at ${currentAlgoPrice.usd}`);
+            }
           }
         }
       }
+    } catch (error) {
+      console.error('Intent monitor error:', error);
+    } finally {
+      monitoringInProgress = false;
     }
-  } catch (error) {
-    console.error('Intent monitor error:', error);
-  } finally {
-    monitoringInProgress = false;
-  }
-});
+  });
+}
 
 // APIs
 app.post('/intents', requireAuth, async (req, res) => {
@@ -894,17 +915,19 @@ io.on('connection', (socket) => {
   });
 });
 
-// Init price
-void fetchAlgoPrice().then((price) => {
-  currentAlgoPrice = price;
-  io.emit('price_update', { ...currentAlgoPrice, observedAt: currentPriceObservedAt });
-});
+if (!IS_VERCEL) {
+  // Init price
+  void fetchAlgoPrice().then((price) => {
+    currentAlgoPrice = price;
+    io.emit('price_update', { ...currentAlgoPrice, observedAt: currentPriceObservedAt });
+  });
 
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
-  console.log(`Connected to database: ${process.env.DATABASE_URL}`);
-});
+  const PORT = process.env.PORT || 3001;
+  server.listen(PORT, () => {
+    console.log(`Backend running on http://localhost:${PORT}`);
+    console.log(`Connected to database: ${process.env.DATABASE_URL}`);
+  });
+}
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
@@ -912,3 +935,5 @@ process.on('SIGINT', async () => {
   await prisma.$disconnect();
   process.exit(0);
 });
+
+export default app;

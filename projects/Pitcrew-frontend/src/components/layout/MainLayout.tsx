@@ -10,7 +10,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   return (
-    <div className="relative min-h-screen bg-transparent text-slate-100">
+    <div className="relative bg-transparent text-slate-100">
       <Sidebar isOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
       <Topbar onOpenSidebar={() => setMobileSidebarOpen(true)} />
 

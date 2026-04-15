@@ -1,51 +1,170 @@
-# Pitcrew
+# Pitcrew – DeFi Intent Automation on Algorand
 
-This starter full stack project has been generated using AlgoKit. See below for default getting started instructions.
+Pitcrew is a DeFi application on Algorand that enables users to create conditional trading intents and execute them automatically when predefined conditions are met.
 
-## Setup
+---
 
-### Initial setup
-1. Clone this repository to your local machine.
-2. Ensure [Docker](https://www.docker.com/) is installed and operational. Then, install `AlgoKit` following this [guide](https://github.com/algorandfoundation/algokit-cli#install).
-3. Install dependencies using one of the following approaches:
-   - Recommended monorepo bootstrap: run `algokit project bootstrap all` in the project root.
-   - Manual install by project:
-     - Frontend: `cd projects/Pitcrew-frontend && npm install`
-     - Backend: `cd projects/Pitcrew-backend && npm install`
-     - Contracts (Python): from project root run `python -m venv .venv`, then `.venv\\Scripts\\activate`, then `pip install -r requirements.txt`
-4. In the case of a smart contract project, execute `algokit generate env-file -a target_network localnet` from the `Pitcrew-contracts` directory to create a `.env.localnet` file with default configuration for `localnet`.
-5. To build your project, execute `algokit project run build`. This compiles your project and prepares it for running.
-6. For project-specific instructions, refer to the READMEs of the child projects:
-   - Smart Contracts: [Pitcrew-contracts](projects/Pitcrew-contracts/README.md)
-   - Backend Application: [Pitcrew-backend](projects/Pitcrew-backend/README.md)
-   - Frontend Application: [Pitcrew-frontend](projects/Pitcrew-frontend/README.md)
+## Project Structure
 
-> This project is structured as a monorepo, refer to the [documentation](https://github.com/algorandfoundation/algokit-cli/blob/main/docs/features/project/run.md) to learn more about custom command orchestration via `algokit project run`.
+```
+projects/
+├── Pitcrew-frontend/     # React + TypeScript UI
+├── Pitcrew-backend/      # Node.js + Express API
+└── Pitcrew-contracts/    # PyTeal smart contracts
+```
 
-### Subsequently
+---
 
-1. If you update to the latest source code and there are new dependencies, you will need to run `algokit project bootstrap all` again.
-2. Follow step 3 above.
+## Prerequisites
 
-## Tools
+* Node.js 20+
+* Python 3.10+
+* Docker (for Algorand localnet)
+* AlgoKit CLI (recommended)
 
-This project makes use of Python and React to build Algorand smart contracts and to provide a base project configuration to develop frontends for your Algorand dApps and interactions with smart contracts. The following tools are in use:
+---
 
-- Algorand, AlgoKit, and AlgoKit Utils
-- Python dependencies including Poetry, Black, Ruff or Flake8, mypy, pytest, and pip-audit
-- React and related dependencies including AlgoKit Utils, Tailwind CSS, daisyUI, use-wallet, npm, jest, playwright, Prettier, ESLint, and Github Actions workflows for build validation
+## Installation
 
-### VS Code
+### Clone Repository
 
-It has also been configured to have a productive dev experience out of the box in [VS Code](https://code.visualstudio.com/), see the [backend .vscode](./backend/.vscode) and [frontend .vscode](./frontend/.vscode) folders for more details.
+```bash
+git clone https://github.com/your-org/Pit-Crew.git
+cd Pit-Crew
+```
 
-## Integrating with smart contracts and application clients
+### Install Dependencies
 
-Refer to the [Pitcrew-contracts](projects/Pitcrew-contracts/README.md) folder for overview of working with smart contracts, [projects/Pitcrew-frontend](projects/Pitcrew-frontend/README.md) for overview of the React project and the [projects/Pitcrew-frontend/contracts](projects/Pitcrew-frontend/src/contracts/README.md) folder for README on adding new smart contracts from backend as application clients on your frontend. The templates provided in these folders will help you get started.
-When you compile and generate smart contract artifacts, your frontend component will automatically generate typescript application clients from smart contract artifacts and move them to `frontend/src/contracts` folder, see [`generate:app-clients` in package.json](projects/Pitcrew-frontend/package.json). Afterwards, you are free to import and use them in your frontend application.
+**Using AlgoKit (recommended):**
 
-The frontend starter also provides an example of interactions with your IntentClient in [`AppCalls.tsx`](projects/Pitcrew-frontend/src/components/AppCalls.tsx) component by default.
+```bash
+algokit project bootstrap all
+```
 
-## Next Steps
+**Manual Setup:**
 
-You can take this project and customize it to build your own decentralized applications on Algorand. Make sure to understand how to use AlgoKit and how to write smart contracts for Algorand before you start.
+```bash
+# Frontend
+cd projects/Pitcrew-frontend && npm install && cd ../..
+
+# Backend
+cd projects/Pitcrew-backend && npm install && cd ../..
+
+# Contracts
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate (Windows)
+pip install -r requirements.txt
+```
+
+---
+
+## Environment Configuration
+
+### Backend (`projects/Pitcrew-backend/.env`)
+
+```env
+DATABASE_URL=file:./dev.db
+ALGOD_SERVER=<algorand_node_url>
+ALLOWED_ORIGINS=http://localhost:5173
+```
+
+### Contracts
+
+```bash
+cd projects/Pitcrew-contracts
+algokit generate env-file -a target_network localnet
+```
+
+---
+
+## Running the Application
+
+### Start Backend
+
+```bash
+cd projects/Pitcrew-backend
+npm run dev
+```
+
+### Start Frontend
+
+```bash
+cd projects/Pitcrew-frontend
+npm run dev
+```
+
+### Run Contracts (optional)
+
+```bash
+cd projects/Pitcrew-contracts
+npm run dev
+```
+
+---
+
+## Core Components
+
+### Frontend
+
+* UI for creating and managing intents
+* Wallet integration
+* Real-time updates via WebSockets
+
+### Backend
+
+* API for intent management
+* Price monitoring and trigger evaluation
+* WebSocket server for notifications
+
+### Smart Contracts
+
+* Store and validate user intents
+* Execute transactions on-chain
+
+---
+
+## Key Features
+
+* Conditional trading intents
+* Automated execution
+* Real-time notifications
+* On-chain validation
+
+---
+
+## Database
+
+Run migrations:
+
+```bash
+cd projects/Pitcrew-backend
+npx prisma migrate dev
+```
+
+View database:
+
+```bash
+npx prisma studio
+```
+
+---
+
+## Build
+
+```bash
+algokit project run build
+```
+
+---
+
+## Notes
+
+* SQLite is used for development; use PostgreSQL in production
+* Ensure Algorand node access is configured
+* Deploy contracts before production use
+
+---
+
+## License
+
+Add your license here.
