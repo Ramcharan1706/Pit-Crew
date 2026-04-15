@@ -527,12 +527,14 @@ function isIntentTriggered(intent: Pick<Intent, 'condition' | 'initialPrice' | '
 async function fetchConfirmedTransaction(txnId: string): Promise<boolean> {
   for (let attempt = 0; attempt < MAX_CONFIRMATION_POLLS; attempt += 1) {
     const pendingInfo = await algodClient.pendingTransactionInformation(txnId).do();
-    const confirmedRound = Number((pendingInfo as { 'confirmed-round'?: number; confirmedRound?: number })['confirmed-round'] ?? (pendingInfo as { confirmedRound?: number }).confirmedRound ?? 0);
+    const pendingInfoRecord = pendingInfo as unknown as Record<string, unknown>;
+    const confirmedRoundRaw = pendingInfoRecord['confirmed-round'] ?? pendingInfoRecord.confirmedRound ?? 0;
+    const confirmedRound = Number(confirmedRoundRaw);
     if (confirmedRound > 0) {
       return true;
     }
 
-    const poolError = String((pendingInfo as { 'pool-error'?: string })['pool-error'] ?? '').trim();
+    const poolError = String(pendingInfoRecord['pool-error'] ?? '').trim();
     if (poolError) {
       throw new Error(poolError);
     }
