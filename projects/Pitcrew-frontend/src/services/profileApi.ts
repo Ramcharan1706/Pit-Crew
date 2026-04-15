@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { ProfileSettings, UpdateProfileSettingsDto } from '../types/profile';
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://pit-crew.onrender.com';
 const api = axios.create({ baseURL: API_BASE, timeout: 12000 });
 const AUTH_TOKEN_KEY = 'pitcrew_auth_token';
 

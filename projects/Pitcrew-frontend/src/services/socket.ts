@@ -8,7 +8,7 @@ type IntentListener = (intent: Intent) => void;
 type ConnectionListener = (state: ConnectionState) => void;
 type PriceListener = (snapshot: PriceSnapshot) => void;
 
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://pit-crew.onrender.com';
 const socket = io(SOCKET_URL, {
   autoConnect: true,
   reconnection: true,
