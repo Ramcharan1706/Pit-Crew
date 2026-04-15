@@ -1,5 +1,8 @@
+# Python Contracts - NOT needed for frontend build
 projects/Pitcrew-contracts
 projects/Pitcrew-contracts/**
+
+# Python package files
 requirements.txt
 poetry.toml
 pyproject.toml
@@ -8,3 +11,22 @@ pyproject.toml
 __pycache__
 *.py
 setup.py
+
+# Backend code - deployed separately
+projects/Pitcrew-backend
+projects/Pitcrew-backend/**
+
+# Development & git files
+.git
+.gitignore
+*.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
