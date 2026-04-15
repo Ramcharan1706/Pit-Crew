@@ -73,8 +73,10 @@ export const CreateIntent: React.FC = () => {
 
   const [token] = useState('ALGO')
   const [strategyId, setStrategyId] = useState<StrategyId>('stop_loss')
+  const [triggerMode, setTriggerMode] = useState<'percent' | 'price'>('percent')
   const [recipient, setRecipient] = useState('')
   const [amountAlgo, setAmountAlgo] = useState('')
+  const [targetPercent, setTargetPercent] = useState('5')
   const [triggerPrice, setTriggerPrice] = useState('')
   const [expirationMinutes, setExpirationMinutes] = useState('60')
   const [submitting, setSubmitting] = useState(false)
@@ -86,17 +88,8 @@ export const CreateIntent: React.FC = () => {
   )
 
   useEffect(() => {
-    if (!latestPrice || latestPrice <= 0) {
-      setTriggerPrice('')
-      return
-    }
-
-    const suggested = strategy.triggerDirection === 'down'
-      ? latestPrice * (1 - strategy.defaultTarget / 100)
-      : latestPrice * (1 + strategy.defaultTarget / 100)
-
-    setTriggerPrice(suggested.toFixed(4))
-  }, [latestPrice, strategy])
+    setTargetPercent(String(strategy.defaultTarget))
+  }, [strategy])
 
   useEffect(() => {
     if (!userAddress) {
@@ -117,6 +110,15 @@ export const CreateIntent: React.FC = () => {
   }, [recipient])
 
   const targetValue = useMemo(() => {
+    if (triggerMode === 'percent') {
+      const percent = Number(targetPercent)
+      if (!Number.isFinite(percent) || percent <= 0) {
+        return 0
+      }
+
+      return Math.max(0, percent)
+    }
+
     if (!latestPrice || latestPrice <= 0) {
       return 0
     }
@@ -132,7 +134,33 @@ export const CreateIntent: React.FC = () => {
     }
 
     return Math.max(0, raw)
-  }, [latestPrice, triggerPrice, strategy.triggerDirection])
+  }, [latestPrice, targetPercent, triggerMode, triggerPrice, strategy.triggerDirection])
+
+  const resolvedTriggerPrice = useMemo(() => {
+    if (triggerMode === 'price') {
+      const direct = Number(triggerPrice)
+      if (!Number.isFinite(direct) || direct <= 0) {
+        return 0
+      }
+
+      return direct
+    }
+
+    if (!latestPrice || latestPrice <= 0) {
+      return 0
+    }
+
+    const percent = Number(targetPercent)
+    if (!Number.isFinite(percent) || percent <= 0) {
+      return 0
+    }
+
+    const computed = strategy.triggerDirection === 'down'
+      ? latestPrice * (1 - percent / 100)
+      : latestPrice * (1 + percent / 100)
+
+    return computed > 0 ? computed : 0
+  }, [latestPrice, targetPercent, triggerMode, triggerPrice, strategy.triggerDirection])
 
   const validate = (): boolean => {
     const nextErrors: Record<string, string> = {}
@@ -146,14 +174,25 @@ export const CreateIntent: React.FC = () => {
       nextErrors.amountAlgo = 'Amount must be greater than 0.'
     }
 
-    const trigger = Number(triggerPrice)
-    if (!Number.isFinite(trigger) || trigger <= 0) {
-      nextErrors.triggerPrice = 'Enter a valid trigger price.'
+    if (triggerMode === 'percent') {
+      const percent = Number(targetPercent)
+      if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+        nextErrors.targetPercent = 'Percentage must be between 0 and 100.'
+      }
+    } else {
+      const trigger = Number(triggerPrice)
+      if (!Number.isFinite(trigger) || trigger <= 0) {
+        nextErrors.triggerPrice = 'Enter a valid trigger price.'
+      }
     }
 
     const target = Number(targetValue)
     if (!Number.isFinite(target) || target <= 0 || target > 100) {
-      nextErrors.triggerPrice = 'Trigger price must imply a valid change between 0 and 100%.'
+      if (triggerMode === 'percent') {
+        nextErrors.targetPercent = 'Percentage must be between 0 and 100.'
+      } else {
+        nextErrors.triggerPrice = 'Trigger price must imply a valid change between 0 and 100%.'
+      }
     }
 
     if (!latestPrice || latestPrice <= 0) {
@@ -216,7 +255,7 @@ export const CreateIntent: React.FC = () => {
 
   const amount = Number(amountAlgo) || 0
   const referencePrice = latestPrice || 0
-  const triggerValue = Number(triggerPrice) || 0
+  const triggerValue = resolvedTriggerPrice
   const triggerNarrative = strategy.triggerDirection === 'down'
     ? `Triggered because price dropped to ${formatUSD(triggerValue)} or lower.`
     : `Triggered because price broke out to ${formatUSD(triggerValue)} or higher.`
@@ -260,17 +299,59 @@ export const CreateIntent: React.FC = () => {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-100">Trigger Price (USD)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.0001"
-                value={triggerPrice}
-                onChange={(event) => setTriggerPrice(event.target.value)}
-                placeholder="0.0000"
-                className="w-full rounded-xl border border-[#1F2937] bg-[#111827] px-4 py-3"
-              />
-              {errors.triggerPrice ? <p className="mt-2 text-sm text-red-300">{errors.triggerPrice}</p> : null}
+              <label className="mb-2 block text-sm font-semibold text-slate-100">Trigger Setup</label>
+              <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setTriggerMode('percent')}
+                  className={`rounded-xl border px-3 py-2 text-sm transition ${triggerMode === 'percent'
+                    ? 'border-sky-400/45 bg-sky-500/14 text-sky-100'
+                    : 'border-[#1F2937] bg-[#111827] text-slate-300 hover:border-slate-500'}`}
+                >
+                  Set by Percentage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTriggerMode('price')}
+                  className={`rounded-xl border px-3 py-2 text-sm transition ${triggerMode === 'price'
+                    ? 'border-sky-400/45 bg-sky-500/14 text-sky-100'
+                    : 'border-[#1F2937] bg-[#111827] text-slate-300 hover:border-slate-500'}`}
+                >
+                  Set by Trigger Price
+                </button>
+              </div>
+
+              {triggerMode === 'percent' ? (
+                <>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={targetPercent}
+                    onChange={(event) => setTargetPercent(event.target.value)}
+                    placeholder="5"
+                    className="w-full rounded-xl border border-[#1F2937] bg-[#111827] px-4 py-3"
+                  />
+                  <p className="mt-2 text-xs text-slate-400">
+                    Enter movement %. Trigger price auto-follows live ALGO price.
+                  </p>
+                  {errors.targetPercent ? <p className="mt-2 text-sm text-red-300">{errors.targetPercent}</p> : null}
+                </>
+              ) : (
+                <>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={triggerPrice}
+                    onChange={(event) => setTriggerPrice(event.target.value)}
+                    placeholder="0.0000"
+                    className="w-full rounded-xl border border-[#1F2937] bg-[#111827] px-4 py-3"
+                  />
+                  {errors.triggerPrice ? <p className="mt-2 text-sm text-red-300">{errors.triggerPrice}</p> : null}
+                </>
+              )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -341,7 +422,7 @@ export const CreateIntent: React.FC = () => {
             <div className="rounded-2xl border border-[#1F2937] bg-[#0f1728] p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Trigger condition</p>
               <p className="mt-2 text-lg font-semibold text-sky-200">
-                {triggerValue > 0 ? `ALGO reaches ${formatUSD(triggerValue)}` : 'Set a trigger price'}
+                {triggerValue > 0 ? `ALGO reaches ${formatUSD(triggerValue)}` : 'Set percentage or trigger price'}
               </p>
               <p className="mt-1 text-sm text-slate-300">{triggerNarrative}</p>
             </div>
