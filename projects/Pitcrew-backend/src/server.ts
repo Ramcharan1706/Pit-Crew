@@ -37,10 +37,18 @@ const prisma = new PrismaClient({
 });
 const server = http.createServer(app);
 const normalizeOrigin = (origin: string) => origin.trim().replace(/^['\"]+|['\"]+$/g, '').replace(/\/+$/, '');
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
+const fallbackAllowedOrigins = [
+  'https://pit-crew-silk.vercel.app',
+  'https://pit-crew.vercel.app',
+  'https://*.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+].map((origin) => normalizeOrigin(origin));
+const allowedOrigins = Array.from(new Set([...envAllowedOrigins, ...fallbackAllowedOrigins]));
 const wildcardAllowedOrigins = allowedOrigins
   .filter((origin) => origin.includes('*'))
   .map((origin) => new RegExp(`^${origin
@@ -58,7 +66,7 @@ const isOriginAllowed = (origin: string): boolean => {
 };
 
 logger.info(`Starting Pitcrew backend in ${NODE_ENV} mode`);
-logger.info(`CORS origins: ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : 'allow all (*)'}`);
+logger.info(`CORS origins (effective): ${allowedOrigins.length > 0 ? allowedOrigins.join(', ') : 'allow all (*)'}`);
 
 const io = new Server(server, {
   cors: {
@@ -69,7 +77,7 @@ const io = new Server(server, {
       }
 
       logger.warn(`Socket blocked by CORS origin policy: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      callback(null, false);
     },
     credentials: true,
   },
@@ -87,7 +95,7 @@ app.use(
       }
 
       logger.warn(`HTTP blocked by CORS origin policy: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
